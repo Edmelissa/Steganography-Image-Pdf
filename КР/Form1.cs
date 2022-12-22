@@ -28,7 +28,7 @@ namespace КР
 
         private Bitmap fileimage;
 
-        private string filenamesource; //путь к скрываемому файлу
+        private string filenamesource = ""; //путь к скрываемому файлу
 
         private bool textorimage; //тип скрываемого сообщения (0 - текст, 1 - картинка)
 
@@ -163,6 +163,8 @@ namespace КР
 
             byte[] toEncrypt = new byte[defile.Length];
 
+            Console.WriteLine(defile.Length);
+
             crypts.Read(toEncrypt, 0, toEncrypt.Length);
 
             crypts.Flush();
@@ -176,7 +178,7 @@ namespace КР
         public string[,] XrefTable(string filename)
         {
             string[,] values = new string[0, 3];
-            int kol = 0;
+            int kol;
             int firstobj = 0;
 
             int numxref = 0;
@@ -184,13 +186,17 @@ namespace КР
             int i = 0;
             bool endxref = false;
 
+            bool isstream = false;
+
             string text1 = File.ReadAllText(filename, Encoding.Default);
             string[] alllines = text1.Split('\n');
 
             foreach (string s in alllines)
             {
-                if (s.Contains("xref"))
+                if (!isstream && s.Contains("xref"))
+                {
                     numxref = i;
+                }
                 else if (!endxref && numxref != 0)
                 {
                     if (s.Contains("trailer"))
@@ -215,11 +221,14 @@ namespace КР
                         values[firstobj + i - numxref - 2, 2] = subs[2];
                     }
                 }
+
+                if (s.Contains("stream"))
+                    isstream = true;
+                else
+                    isstream = false;
+
                 i++;
             }
-
-
-
             return values;
         }
 
@@ -308,7 +317,7 @@ namespace КР
                     
 
             string[] substr1 = oldsizexrefstr.Split(' ');
-            newsizexrefstr = "xref\n" + substr1[0] + " " + (numobj + 1).ToString() + "\n";
+            newsizexrefstr = "xref\n" + substr1[0] + " " + ((numobj + 1)-Convert.ToInt32(substr1[0])).ToString() + "\n";
 
             string[] substr2 = xreffile.Split('\n');
             string str2 = substr2[substr2.Length - 2];
@@ -352,10 +361,10 @@ namespace КР
                 }
 
                 if(startobj)
-                {
+                {                    
                     if(i > 2)
                     {
-                        text += s;
+                        text += s + '\n';
                     }
                     i++;
                 }
@@ -363,221 +372,7 @@ namespace КР
 
             return text;
         }
-
-       /* неудачная попытка стеганографии в картинки пдф
-       public string ChangeXrefTable(string file, int num, int offset)
-       {
-           int offset1 = file.IndexOf("startxref");
-
-           string startxref = file.Substring(file.IndexOf("startxref"));
-
-           offset1 += startxref.IndexOf('\n') + 1;
-
-           startxref = startxref.Substring(startxref.IndexOf('\n') + 1);          
-
-           int posxref = Convert.ToInt32(startxref.Substring(0, startxref.IndexOf('\n')));
-
-           int offsetxref = posxref + offset;
-
-           string newposxref = offsetxref.ToString();
-           string sfile = file.Substring(0, offset1);
-           string efile = file.Substring(offset1 + posxref.ToString().Length);
-           file = sfile + newposxref + efile;
-
-           offsetxref += 5;
-
-           string xref = file.Substring(offsetxref);
-
-           offsetxref += xref.IndexOf('\n') + 1;
-
-           string firstkol = xref.Substring(0, xref.IndexOf('\n'));
-           xref = xref.Substring(xref.IndexOf('\n') + 1);
-
-           string xrefvalue = xref.Substring(0, xref.IndexOf("trailer"));
-
-           int firstobj = Convert.ToInt32(firstkol.Substring(0, firstkol.IndexOf(' ')));
-           int kol = Convert.ToInt32(firstkol.Substring(firstkol.IndexOf(' ') + 1));
-
-           int kolchange = 0;
-           string changevalue = "";
-
-           for (int i = firstobj; i < firstobj + kol; i++)
-           {
-               if (i > num)
-               {
-                   string value = xrefvalue.Substring(0, xrefvalue.IndexOf('\n'));
-
-                   kolchange += value.Length + 1;
-
-                   string str1 = value.Substring(0, xrefvalue.IndexOf(' '));
-                   value = value.Substring(value.IndexOf(' ') + 1);
-
-                   int str = Convert.ToInt32(str1);
-                   str += offset;
-
-                   str1 = str.ToString();
-
-                   while (str1.Length != 10)
-                       str1 = "0" + str1;
-
-                   string str2 = value.Substring(0, value.IndexOf(' '));
-                   value = value.Substring(value.IndexOf(' ') + 1);
-
-                   string str3 = value.Substring(value.IndexOf(' ') + 1);
-
-                   changevalue += str1 + " "+ str2 + " " + str3 + "\n";
-               }
-               else
-               {
-                   string value = xrefvalue.Substring(0, xrefvalue.IndexOf('\n') - 1);
-                   offsetxref += value.Length + 2;
-               }              
-               xrefvalue = xrefvalue.Substring(xrefvalue.IndexOf('\n') + 1);              
-           }
-
-           string startfile = file.Substring(0, offsetxref);
-           string endfile = file.Substring(offsetxref + kolchange);
-
-           string newfile = startfile + changevalue + endfile;
-
-           return newfile;
-       }
-
-       public bool IsImage(string file, int offset)
-       {
-           string interobj = file.Substring(offset);
-           string obj = interobj.Substring(0, interobj.IndexOf("endobj")+6);
-
-           if (obj.Contains("/Type /XObject") && obj.Contains("/Subtype /Image"))
-               return true;
-           else
-               return false;
-       }
-
-       public Bitmap ExtractImage(string[,] table, string file, int offset)
-       {            
-           string interobj = file.Substring(offset);
-           string obj = interobj.Substring(0, interobj.IndexOf("endobj") + 6);
-
-           string filter = "";
-
-           if (obj.Contains("/Filter"))
-           {
-               string objsubtype = obj.Substring(obj.IndexOf("/Filter") + 1);
-               objsubtype = objsubtype.Substring(0, objsubtype.IndexOf('\n') + 1);
-
-               filter = objsubtype.Substring(objsubtype.IndexOf(' ') + 1, objsubtype.IndexOf('\n') - objsubtype.IndexOf(' ') -  1);
-           }
-
-           string objheight = obj.Substring(obj.IndexOf("/Height") + 8);
-           objheight = objheight.Substring(0, objheight.IndexOf('\n'));
-           int height = Convert.ToInt32(objheight);
-
-           string objwidth = obj.Substring(obj.IndexOf("/Width") + 7);
-           objwidth = objwidth.Substring(0, objwidth.IndexOf('\n'));
-           int width = Convert.ToInt32(objwidth);
-
-           string objstream = obj.Substring(obj.IndexOf("stream") + 8);
-           objstream = objstream.Substring(0, objstream.IndexOf("endstream") - 2);
-
-           byte[] imageBytes = Encoding.Default.GetBytes(objstream);
-
-           Console.WriteLine(imageBytes.Length);
-
-           Console.WriteLine(filter);
-
-           Console.WriteLine(objheight);
-           Console.WriteLine(objwidth);
-
-           FlateDecode flate = new FlateDecode();
-           byte[] decodedBytes = flate.Decode(imageBytes);
-
-           Console.WriteLine(decodedBytes.Length);
-
-           int bitsPerComponent = decodedBytes.Length / height * 8 / width;
-
-           PixelFormat pixelFormat;
-           switch (bitsPerComponent)
-           {
-               case 1:
-                   pixelFormat = PixelFormat.Format1bppIndexed;
-                   break;
-               case 8:
-                   pixelFormat = PixelFormat.Format8bppIndexed;
-                   break;
-               case 16:
-                   pixelFormat = PixelFormat.Format16bppArgb1555;
-                   break;
-               case 24:
-                   pixelFormat = PixelFormat.Format24bppRgb;
-                   break;
-               case 32:
-                   pixelFormat = PixelFormat.Format32bppArgb;
-                   break;
-               case 64:
-                   pixelFormat = PixelFormat.Format64bppArgb;
-                   break;
-               default:
-                   throw new Exception("Unknown pixel format " + bitsPerComponent);
-           }
-
-           Bitmap bmp = new Bitmap(width, height, pixelFormat);
-           BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.WriteOnly, bmp.PixelFormat);
-
-           int length = decodedBytes.Length / height;
-           for (int i = 0; i < height; i++)
-           {
-               int offset1 = i * length;
-               int scanOffset1 = i * bmpData.Stride;
-               Marshal.Copy(decodedBytes, offset1, new IntPtr(bmpData.Scan0.ToInt64() + scanOffset1), length);
-           }           
-
-           bmp.UnlockBits(bmpData);
-           bmp.Save("img.png", ImageFormat.Png);
-
-           return bmp;
-       }
-
-       public byte[] InsertImage(string file, int offset, int num, byte[] image)
-       {
-           string interobj = file.Substring(offset);
-           string obj = interobj.Substring(0, interobj.IndexOf("endobj") + 6);
-
-           int offset1 = obj.IndexOf("stream") + 8;
-           string objstream = obj.Substring(obj.IndexOf("stream") + 8);
-           objstream = objstream.Substring(0, objstream.IndexOf("endstream") - 2);
-
-
-           int offsetlength = obj.IndexOf("/Length") + 8;
-
-
-           byte[] imageBytes = Encoding.Default.GetBytes(objstream);
-
-           FlateDecode flate = new FlateDecode();
-           byte[] imageDataCompressed = flate.Encode(image);
-           string newimage = Encoding.Default.GetString(imageDataCompressed);
-
-           Console.WriteLine(imageBytes.Length);
-           Console.WriteLine(imageDataCompressed.Length);
-
-           int pdfoffset = Math.Abs(imageDataCompressed.Length - imageBytes.Length + (imageDataCompressed.Length.ToString().Length - imageBytes.Length.ToString().Length));
-
-           string str1 = file.Substring(0, offset + offset1);
-           string str2 = file.Substring(offset + offset1 + imageBytes.Length);
-           string file1 = str1 + newimage + str2;
-
-           str1 = file1.Substring(0, offset + offsetlength);
-           str2 = file1.Substring(offset + offsetlength + imageDataCompressed.Length.ToString().Length);
-           string file2 = str1 + imageDataCompressed.Length.ToString() + str2;
-
-           string file3 = ChangeXrefTable(file2, num, pdfoffset);
-
-           byte[] bfile3 = Encoding.Default.GetBytes(file3);
-
-           return bfile3;
-       }
-       */
-
+       
         public Form1()
         {
             InitializeComponent();
@@ -623,13 +418,22 @@ namespace КР
                     var fi1 = new FileInfo(filename);
                     name = fi1.Name;
 
-                    xreftable = XrefTable(filename);
+                    try
+                    {
+                        xreftable = XrefTable(filename);
 
-                    numobj = xreftable.GetUpperBound(0) + 1;
+                        numobj = xreftable.GetUpperBound(0) + 1;
 
-                    RBStegPict.Text = "Скрыть информацию внутрь pdf";
-                    RBExtPict.Text = "Извлечь информацию из pdf";
-                    MainPanel.Visible = true;
+                        RBStegPict.Text = "Скрыть информацию внутрь pdf";
+                        RBExtPict.Text = "Извлечь информацию из pdf";
+                        MainPanel.Visible = true;
+                    }
+                    catch
+                    {
+                        MessageBox.Show("В pdf-файле не найдена xref-таблица", "Ошибка",
+                                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                    }
 
                     /* неудачная попытка стеганографии картинки в пдф
                     for (int i = 0; i <= xreftable.GetUpperBound(0); i++)
@@ -689,10 +493,10 @@ namespace КР
                     if (openFileDialog1.ShowDialog() == DialogResult.OK)
                         filenamesource = openFileDialog1.FileName;
 
-                    textorimage = Path.GetExtension(filenamesource) == ".png";
+                    textorimage = Path.GetExtension(filenamesource) == ".png";  
                 }
 
-                if(filenamesource != "")
+                if (RBStegPict.Checked && filenamesource != "" || !RBStegPict.Checked)
                 {
                     ButProc.Enabled = true;
                 }
@@ -730,372 +534,388 @@ namespace КР
 
         private void ButProc_Click(object sender, EventArgs e)
         {
-            // работа с картинкой
-            if (!stegimageorpdf)
+            try 
             {
-                Image im = (Image)fileimage;
-                if (mode)
+                // работа с картинкой
+                if (!stegimageorpdf)
                 {
-                    ImageSteg image = new ImageSteg(im);
-
-                    maxsizeinf = image.SizeImage() * 2;
-                    Console.WriteLine("Максимальное кол-во бит информации " + maxsizeinf.ToString());
-
-                    if (!textorimage)
+                    Image im = (Image)fileimage;
+                    if (mode)
                     {
-                        //Получение скрываемого текста
-                        if (RBInfText.Checked)
-                            textsource = "СТЕГАНОГРАФИЯ " + TBTypeText.Text + " СТЕГАНОГРАФИЯ" + '\n';
-                        else if (RBInfFile.Checked)
-                            textsource = "СТЕГАНОГРАФИЯ " + File.ReadAllText(filenamesource) + " СТЕГАНОГРАФИЯ" + '\n';
-                    }
-                    else
-                    {
-                        Image imagesourse = Image.FromFile(filenamesource);
-                        using (MemoryStream m = new MemoryStream())
+                        ImageSteg image = new ImageSteg(im);
+
+                        maxsizeinf = image.SizeImage() * 2;
+                        Console.WriteLine("Максимальное кол-во бит информации " + maxsizeinf.ToString());
+
+                        if (!textorimage)
                         {
-                            imagesourse.Save(m, imagesourse.RawFormat);
-                            byte[] imageBytes = m.ToArray();
-
-                            textsource = Convert.ToBase64String(imageBytes);
+                            //Получение скрываемого текста
+                            if (RBInfText.Checked)
+                                textsource = "СТЕГАНОГРАФИЯ " + TBTypeText.Text + " СТЕГАНОГРАФИЯ" + '\n';
+                            else if (RBInfFile.Checked)
+                                textsource = "СТЕГАНОГРАФИЯ " + File.ReadAllText(filenamesource) + " СТЕГАНОГРАФИЯ" + '\n';
                         }
-
-                        Console.WriteLine("Картинка в байтах" + textsource.Length);
-
-                        textsource = "КАРТИНКА СТЕГАНОГРАФИЯ " + textsource + " СТЕГАНОГРАФИЯ" + '\n';
-                    }
-
-                    byte[] bytestextsource;
-
-                    //режим работы (с шифрованием или без)
-                    if (CBEnc.Checked)
-                    {
-                        //Шифрование текста сообщения
-                        int sizerand = image.SaltInf();
-                        bytestextsource = EncText(textsource, sizerand);
-                    }
-                    else
-                    {
-                        bytestextsource = Encoding.Unicode.GetBytes(textsource);
-                    }
-
-                    sizeinf = bytestextsource.Length * 8;
-                    Console.WriteLine("Кол-во бит информации " + sizeinf.ToString());
-
-                    if (maxsizeinf >= sizeinf)
-                    {
-                        //функция сокрытия
-                        Bitmap newimage = image.TextToImage(bytestextsource);
-                        Bitmap newimageformat = new Bitmap(newimage.Width, newimage.Height, fileimage.PixelFormat);
-                        using (Graphics gr = Graphics.FromImage(newimageformat))
+                        else
                         {
-                            gr.DrawImage(newimage, new Rectangle(0, 0, newimageformat.Width, newimageformat.Height));
-                        }
-
-                        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                        saveFileDialog1.Filter = "png files (*.png)|*.png";
-                        saveFileDialog1.RestoreDirectory = false;
-
-                        if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
-                            return;
-                        string savefilename = saveFileDialog1.FileName;
-
-                        newimageformat.Save(savefilename, ImageFormat.Png);
-
-                        /* неудачная попытка стеганографии в картинки пдф
-                        Bitmap bm = new Bitmap("newimg.png");
-
-                        byte[ ] data = new byte[3 * bm.Height * bm.Width];
-
-                        for (int i = 0; i < bm.Height; i++)
-                        {
-                            for(int j = 0; j < bm.Width; j++)
+                            Image imagesourse = Image.FromFile(filenamesource);
+                            using (MemoryStream m = new MemoryStream())
                             {
-                                Color color = bm.GetPixel(j, i);
-                                data[i * 3 * bm.Width + j * 3] = color.R;
-                                data[i * 3 * bm.Width + j * 3 + 1] = color.G;
-                                data[i * 3 * bm.Width + j * 3 + 2] = color.B;
+                                imagesourse.Save(m, imagesourse.RawFormat);
+                                byte[] imageBytes = m.ToArray();
+
+                                textsource = Convert.ToBase64String(imageBytes);
+                            }
+
+                            Console.WriteLine("Картинка в байтах" + textsource.Length);
+
+                            textsource = "КАРТИНКА СТЕГАНОГРАФИЯ " + textsource + " СТЕГАНОГРАФИЯ" + '\n';
+                        }
+
+                        byte[] bytestextsource;
+
+                        //режим работы (с шифрованием или без)
+                        if (CBEnc.Checked)
+                        {
+                            //Шифрование текста сообщения
+                            int sizerand = image.SaltInf();
+                            bytestextsource = EncText(textsource, sizerand);
+                        }
+                        else
+                        {
+                            bytestextsource = Encoding.Unicode.GetBytes(textsource);
+                        }
+
+                        sizeinf = bytestextsource.Length * 8;
+                        Console.WriteLine("Кол-во бит информации " + sizeinf.ToString());
+
+                        if (maxsizeinf >= sizeinf)
+                        {
+                            //функция сокрытия
+                            Bitmap newimage = image.TextToImage(bytestextsource);
+
+                            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+                            saveFileDialog1.Filter = "png files (*.png)|*.png";
+                            saveFileDialog1.RestoreDirectory = false;
+
+                            if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
+                                return;
+                            string savefilename = saveFileDialog1.FileName;
+
+                            Bitmap newimageformat = new Bitmap(newimage.Width, newimage.Height, fileimage.PixelFormat);
+                            using (Graphics gr = Graphics.FromImage(newimageformat))
+                            {
+                                gr.DrawImage(newimage, new Rectangle(0, 0, newimageformat.Width, newimageformat.Height));
+                            }
+                            newimageformat.Save(savefilename, ImageFormat.Png);
+
+                            /* неудачная попытка стеганографии в картинки пдф
+                            Bitmap bm = new Bitmap("newimg.png");
+
+                            byte[ ] data = new byte[3 * bm.Height * bm.Width];
+
+                            for (int i = 0; i < bm.Height; i++)
+                            {
+                                for(int j = 0; j < bm.Width; j++)
+                                {
+                                    Color color = bm.GetPixel(j, i);
+                                    data[i * 3 * bm.Width + j * 3] = color.R;
+                                    data[i * 3 * bm.Width + j * 3 + 1] = color.G;
+                                    data[i * 3 * bm.Width + j * 3 + 2] = color.B;
+                                }
+                            }
+
+                            byte[] newfile = InsertImage(filestring, offsetobj, numobj, data);
+                            File.WriteAllBytes(savefilename, newfile);
+                            */
+                        }
+                        else
+                        {
+                            MessageBox.Show("Невозможно скрыть даннный объем информации", "Ошибка",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+
+                    }
+
+                    if (!mode)
+                    {
+                        //функция извлечения
+                        ImageSteg image = new ImageSteg(im);
+                        byte[] bytestextsource = image.ImageToText();
+
+                        Console.WriteLine(Encoding.Unicode.GetString(bytestextsource));
+
+                        if (!Encoding.Unicode.GetString(bytestextsource).Contains("СТЕГАНОГРАФИЯ"))
+                        {
+                            KeyForm kf = new KeyForm();
+                            kf.f1 = this;
+                            kf.ShowDialog();
+                            pwd = Encoding.Unicode.GetBytes(key);
+
+                            //Расшифрование текста сообщения
+                            int sizerand = image.SaltInf();
+                            enctextsource = Encoding.Unicode.GetString(DecText(bytestextsource, sizerand));
+
+                            if (enctextsource.Contains("ШИФРОВАНИЕ"))
+                            {
+                                textsource = enctextsource.Substring(11);
+
+                                if (textsource.Contains("КАРТИНКА"))
+                                {
+                                    textsource = textsource.Substring(9);
+                                }
+                            }
+                            else
+                            {
+                                MessageBox.Show("Неверный ключ", "Ошибка",
+                                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            textsource = Encoding.Unicode.GetString(bytestextsource);
+                            if (Encoding.Unicode.GetString(bytestextsource).Contains("КАРТИНКА"))
+                            {
+                                textsource = textsource.Substring(9);
                             }
                         }
 
-                        byte[] newfile = InsertImage(filestring, offsetobj, numobj, data);
-                        File.WriteAllBytes(savefilename, newfile);
-                        */
-                    }
-                    else
-                    {
-                        MessageBox.Show("Невозможно скрыть даннный объем информации", "Ошибка",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        textsource = textsource.Substring(14);
+
+                        Console.WriteLine(textsource);
+
+                        textsource = textsource.Substring(0, textsource.LastIndexOf(" СТЕГАНОГРАФИЯ"));
+
+                        if (RBInfText.Checked)
+                        {
+                            TBTypeText.Text = textsource;
+                        }
+                        else if (RBInfFile.Checked)
+                        {
+                            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+                            saveFileDialog1.Filter = "txt files (*.txt)|*.txt|png files (*.png)|*.png";
+                            saveFileDialog1.RestoreDirectory = false;
+
+                            if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
+                                return;
+                            string savefilename = saveFileDialog1.FileName;
+
+                            if (Path.GetExtension(savefilename) == ".png")
+                            {
+                                Console.WriteLine(textsource.Length);
+                                byte[] data = Convert.FromBase64String(textsource);
+                                using (var stream = new MemoryStream(data, 0, data.Length))
+                                {
+                                    Image newimage = Image.FromStream(stream);
+                                    newimage.Save(savefilename, ImageFormat.Png);
+                                }
+
+                            }
+                            else if (Path.GetExtension(savefilename) == ".txt")
+                            {
+                                StreamWriter writer = new StreamWriter(savefilename);
+                                writer.Write(textsource);
+                                writer.Dispose();
+                                writer.Close();
+                            }
+                        }
                     }
 
                 }
-
-                if (!mode)
+                // работа с пдф
+                else
                 {
-                    //функция извлечения
-                    ImageSteg image = new ImageSteg(im);
-                    byte[] bytestextsource = image.ImageToText();
-
-                    Console.WriteLine(Encoding.Unicode.GetString(bytestextsource));
-
-                    if (!Encoding.Unicode.GetString(bytestextsource).Contains("СТЕГАНОГРАФИЯ"))
+                    if (mode)
                     {
-                        KeyForm kf = new KeyForm();
-                        kf.f1 = this;
-                        kf.ShowDialog();
-                        pwd = Encoding.Unicode.GetBytes(key);
+                        maxsizeinf = 20000;
+                        Console.WriteLine("Максимальное кол-во бит информации " + maxsizeinf.ToString());
 
-                        //Расшифрование текста сообщения
-                        int sizerand = image.SaltInf();
-                        enctextsource = Encoding.Unicode.GetString(DecText(bytestextsource, sizerand));
-
-                        if (enctextsource.Contains("ШИФРОВАНИЕ"))
+                        if (!textorimage)
                         {
-                            textsource = enctextsource.Substring(11);
+                            //Получение скрываемого текста
+                            if (RBInfText.Checked)
+                                textsource = "СТЕГАНОГРАФИЯ " + TBTypeText.Text + " СТЕГАНОГРАФИЯ" + '\n';
+                            else if (RBInfFile.Checked)
+                                textsource = "СТЕГАНОГРАФИЯ " + File.ReadAllText(filenamesource, Encoding.Default) + " СТЕГАНОГРАФИЯ" + '\n';
 
+                            Console.WriteLine(textsource);                                
+                        }
+                        else
+                        {
+                            Image imagesourse = Image.FromFile(filenamesource);
+                            using (MemoryStream m = new MemoryStream())
+                            {
+                                imagesourse.Save(m, imagesourse.RawFormat);
+                                byte[] imageBytes = m.ToArray();
+
+                                textsource = Convert.ToBase64String(imageBytes);
+                            }
+
+                            Console.WriteLine("Картинка в байтах" + textsource.Length);
+
+                            textsource = "КАРТИНКА СТЕГАНОГРАФИЯ " + textsource + " СТЕГАНОГРАФИЯ" + '\n';
+                        }
+
+                        byte[] bytestextsource;
+
+                        //режим работы (с шифрованием или без)
+                        if (CBEnc.Checked)
+                        {
+                            //Шифрование текста сообщения
+                            int sizerand = 8;
+                            bytestextsource = EncText(textsource, sizerand);
+                        }
+                        else
+                        {
+                            bytestextsource = Encoding.Default.GetBytes(textsource);
+                        }
+
+                        Console.WriteLine("зашифрованный " + Encoding.Default.GetString(bytestextsource));
+
+                        sizeinf = bytestextsource.Length * 8;
+                        Console.WriteLine("Кол-во бит информации " + sizeinf.ToString());
+
+                        if (maxsizeinf >= sizeinf)
+                        {
+                            //функция сокрытия
+                            string newfile = PdfStegFun(filename, bytestextsource, numobj);
+
+                            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+                            saveFileDialog1.Filter = "pdf files (*.pdf)|*.pdf";
+                            saveFileDialog1.RestoreDirectory = false;
+
+                            if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
+                                return;
+                            string savefilename = saveFileDialog1.FileName;
+
+                            //File.WriteAllText(savefilename, newfile, Encoding.Default);
+                            using (StreamWriter writetext = new StreamWriter(savefilename, false, Encoding.Default))
+                            {
+                                string[] newfilestrings = newfile.Split('\n');                               
+                                foreach (string s in newfilestrings)
+                                {
+                                    writetext.Write(s+'\n');
+                                }
+                            }
+
+                            /* неудачная попытка стеганографии в картинки пдф
+                            Bitmap bm = new Bitmap("newimg.png");
+
+                            byte[ ] data = new byte[3 * bm.Height * bm.Width];
+
+                            for (int i = 0; i < bm.Height; i++)
+                            {
+                                for(int j = 0; j < bm.Width; j++)
+                                {
+                                    Color color = bm.GetPixel(j, i);
+                                    data[i * 3 * bm.Width + j * 3] = color.R;
+                                    data[i * 3 * bm.Width + j * 3 + 1] = color.G;
+                                    data[i * 3 * bm.Width + j * 3 + 2] = color.B;
+                                }
+                            }
+
+                            byte[] newfile = InsertImage(filestring, offsetobj, numobj, data);
+                            File.WriteAllBytes(savefilename, newfile);
+                            */
+                        }
+                        else
+                        {
+                            MessageBox.Show("Невозможно скрыть даннный объем информации", "Ошибка",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+
+                    }
+
+                    if (!mode)
+                    {
+                        //функция извлечения
+                        textsource = PdfEncFun(filename, numobj - 1);
+                        textsource = textsource.Substring(0, textsource.Length - 1);
+
+                        Console.WriteLine(textsource);
+
+                        if (!textsource.Contains("СТЕГАНОГРАФИЯ"))
+                        {
+                            KeyForm kf = new KeyForm();
+                            kf.f1 = this;
+                            kf.ShowDialog();
+                            pwd = Encoding.Default.GetBytes(key);
+
+                            //Расшифрование текста сообщения
+                            byte[] bytestextsource = Encoding.Default.GetBytes(textsource);
+                            int sizerand = 8;
+
+                            Console.WriteLine("зашифрованный поток " + Encoding.Default.GetString(bytestextsource));
+
+                            enctextsource = Encoding.Default.GetString(DecText(bytestextsource, sizerand));
+
+                            Console.WriteLine(enctextsource);
+
+                            if (enctextsource.Contains("ШИФРОВАНИЕ"))
+                            {
+                                textsource = enctextsource.Substring(11);
+
+                                if (textsource.Contains("КАРТИНКА"))
+                                {
+                                    textsource = textsource.Substring(9);
+                                }
+                            }
+                            else
+                            {
+                                MessageBox.Show("Неверный ключ", "Ошибка",
+                                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+                        }
+                        else
+                        {
                             if (textsource.Contains("КАРТИНКА"))
                             {
                                 textsource = textsource.Substring(9);
                             }
                         }
-                        else
+
+                        textsource = textsource.Substring(14);
+
+                        textsource = textsource.Substring(0, textsource.LastIndexOf(" СТЕГАНОГРАФИЯ"));
+
+                        if (RBInfText.Checked)
                         {
-                            MessageBox.Show("Неверный ключ", "Ошибка",
-                                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
+                            TBTypeText.Text = textsource;
                         }
-                    }
-                    else
-                    {
-                        textsource = Encoding.Unicode.GetString(bytestextsource);
-                        if (Encoding.Unicode.GetString(bytestextsource).Contains("КАРТИНКА"))
+                        else if (RBInfFile.Checked)
                         {
-                            textsource = textsource.Substring(9);
-                        }
-                    }
+                            SaveFileDialog saveFileDialog1 = new SaveFileDialog();
+                            saveFileDialog1.Filter = "txt files (*.txt)|*.txt|png files (*.png)|*.png";
+                            saveFileDialog1.RestoreDirectory = false;
 
-                    textsource = textsource.Substring(14);
+                            if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
+                                return;
+                            string savefilename = saveFileDialog1.FileName;
 
-                    Console.WriteLine(textsource);
-
-                    textsource = textsource.Substring(0, textsource.LastIndexOf(" СТЕГАНОГРАФИЯ"));
-
-                    if (RBInfText.Checked)
-                    {
-                        TBTypeText.Text = textsource;
-                    }
-                    else if (RBInfFile.Checked)
-                    {
-                        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                        saveFileDialog1.Filter = "txt files (*.txt)|*.txt|png files (*.png)|*.png";
-                        saveFileDialog1.RestoreDirectory = false;
-
-                        if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
-                            return;
-                        string savefilename = saveFileDialog1.FileName;
-
-                        if (Path.GetExtension(savefilename) == ".png")
-                        {
-                            Console.WriteLine(textsource.Length);
-                            byte[] data = Convert.FromBase64String(textsource);
-                            using (var stream = new MemoryStream(data, 0, data.Length))
+                            if (Path.GetExtension(savefilename) == ".png")
                             {
-                                Image newimage = Image.FromStream(stream);
-                                newimage.Save(savefilename, ImageFormat.Png);
-                            }
+                                Console.WriteLine(textsource.Length);
+                                byte[] data = Convert.FromBase64String(textsource);
+                                using (var stream = new MemoryStream(data, 0, data.Length))
+                                {
+                                    Image newimage = Image.FromStream(stream);
+                                    newimage.Save(savefilename, ImageFormat.Png);
+                                }
 
-                        }
-                        else if (Path.GetExtension(savefilename) == ".txt")
-                        {
-                            StreamWriter writer = new StreamWriter(savefilename);
-                            writer.Write(textsource);
-                            writer.Dispose();
-                            writer.Close();
+                            }
+                            else if (Path.GetExtension(savefilename) == ".txt")
+                            {
+                                File.WriteAllText(savefilename, textsource, Encoding.Default);
+                            }
                         }
                     }
                 }
-
             }
-            // работа с пдф
-            else
+            catch
             {
-                if (mode)
-                {
-                    maxsizeinf = 20000;
-                    Console.WriteLine("Максимальное кол-во бит информации " + maxsizeinf.ToString());
-
-                    if (!textorimage)
-                    {
-                        //Получение скрываемого текста
-                        if (RBInfText.Checked)
-                            textsource = "СТЕГАНОГРАФИЯ " + TBTypeText.Text + " СТЕГАНОГРАФИЯ" + '\n';
-                        else if (RBInfFile.Checked)
-                            textsource = "СТЕГАНОГРАФИЯ " + File.ReadAllText(filenamesource) + " СТЕГАНОГРАФИЯ" + '\n';
-                    }
-                    else
-                    {
-                        Image imagesourse = Image.FromFile(filenamesource);
-                        using (MemoryStream m = new MemoryStream())
-                        {
-                            imagesourse.Save(m, imagesourse.RawFormat);
-                            byte[] imageBytes = m.ToArray();
-
-                            textsource = Convert.ToBase64String(imageBytes);
-                        }
-
-                        Console.WriteLine("Картинка в байтах" + textsource.Length);
-
-                        textsource = "КАРТИНКА СТЕГАНОГРАФИЯ " + textsource + " СТЕГАНОГРАФИЯ" + '\n';
-                    }
-
-                    byte[] bytestextsource;
-
-                    //режим работы (с шифрованием или без)
-                    if (CBEnc.Checked)
-                    {
-                        //Шифрование текста сообщения
-                        int sizerand = 8;
-                        bytestextsource = EncText(textsource, sizerand);
-                    }
-                    else
-                    {
-                        bytestextsource = Encoding.Default.GetBytes(textsource);
-                    }
-
-                    Console.WriteLine("зашифрованный " + Encoding.Default.GetString(bytestextsource));
-
-                    sizeinf = bytestextsource.Length * 8;
-                    Console.WriteLine("Кол-во бит информации " + sizeinf.ToString());
-
-                    if (maxsizeinf >= sizeinf)
-                    {
-                        //функция сокрытия
-                        string newfile = PdfStegFun(filename, bytestextsource, numobj);                        
-
-                        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                        saveFileDialog1.Filter = "pdf files (*.pdf)|*.pdf";
-                        saveFileDialog1.RestoreDirectory = false;
-
-                        if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
-                            return;
-                        string savefilename = saveFileDialog1.FileName;
-
-                        File.WriteAllText(savefilename, newfile, Encoding.Default);                      
-
-                        /* неудачная попытка стеганографии в картинки пдф
-                        Bitmap bm = new Bitmap("newimg.png");
-
-                        byte[ ] data = new byte[3 * bm.Height * bm.Width];
-
-                        for (int i = 0; i < bm.Height; i++)
-                        {
-                            for(int j = 0; j < bm.Width; j++)
-                            {
-                                Color color = bm.GetPixel(j, i);
-                                data[i * 3 * bm.Width + j * 3] = color.R;
-                                data[i * 3 * bm.Width + j * 3 + 1] = color.G;
-                                data[i * 3 * bm.Width + j * 3 + 2] = color.B;
-                            }
-                        }
-
-                        byte[] newfile = InsertImage(filestring, offsetobj, numobj, data);
-                        File.WriteAllBytes(savefilename, newfile);
-                        */
-                    }
-                    else
-                    {
-                        MessageBox.Show("Невозможно скрыть даннный объем информации", "Ошибка",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-
-                }
-
-                if (!mode)
-                {
-                    //функция извлечения
-                    textsource = PdfEncFun(filename, numobj - 1);
-
-                    Console.WriteLine(textsource);
-
-                    if (!textsource.Contains("СТЕГАНОГРАФИЯ"))
-                    {
-                        KeyForm kf = new KeyForm();
-                        kf.f1 = this;
-                        kf.ShowDialog();
-                        pwd = Encoding.Default.GetBytes(key);
-
-                        //Расшифрование текста сообщения
-                        byte[] bytestextsource = Encoding.Default.GetBytes(textsource);
-                        int sizerand = 8;
-
-                        Console.WriteLine("зашифрованный поток " + Encoding.Default.GetString(bytestextsource));
-
-                        enctextsource = Encoding.Default.GetString(DecText(bytestextsource, sizerand));
-
-                        Console.WriteLine(enctextsource);
-
-                        if (enctextsource.Contains("ШИФРОВАНИЕ"))
-                        {
-                            textsource = enctextsource.Substring(11);
-
-                            if (textsource.Contains("КАРТИНКА"))
-                            {
-                                textsource = textsource.Substring(9);
-                            }
-                        }
-                        else
-                        {
-                            MessageBox.Show("Неверный ключ", "Ошибка",
-                                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        if (textsource.Contains("КАРТИНКА"))
-                        {
-                            textsource = textsource.Substring(9);
-                        }
-                    }
-
-                    textsource = textsource.Substring(14);
-
-                    textsource = textsource.Substring(0, textsource.LastIndexOf(" СТЕГАНОГРАФИЯ"));
-
-                    if (RBInfText.Checked)
-                    {
-                        TBTypeText.Text = textsource;
-                    }
-                    else if (RBInfFile.Checked)
-                    {
-                        SaveFileDialog saveFileDialog1 = new SaveFileDialog();
-                        saveFileDialog1.Filter = "txt files (*.txt)|*.txt|png files (*.png)|*.png";
-                        saveFileDialog1.RestoreDirectory = false;
-
-                        if (saveFileDialog1.ShowDialog() == DialogResult.Cancel)
-                            return;
-                        string savefilename = saveFileDialog1.FileName;
-
-                        if (Path.GetExtension(savefilename) == ".png")
-                        {
-                            Console.WriteLine(textsource.Length);
-                            byte[] data = Convert.FromBase64String(textsource);
-                            using (var stream = new MemoryStream(data, 0, data.Length))
-                            {
-                                Image newimage = Image.FromStream(stream);
-                                newimage.Save(savefilename, ImageFormat.Png);
-                            }
-
-                        }
-                        else if (Path.GetExtension(savefilename) == ".txt")
-                        {
-                            StreamWriter writer = new StreamWriter(savefilename);
-                            writer.Write(textsource);
-                            writer.Dispose();
-                            writer.Close();
-                        }
-                    }
-                }
+                MessageBox.Show("Непредвиденная ошибка", "Ошибка",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
